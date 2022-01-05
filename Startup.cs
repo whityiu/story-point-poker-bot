@@ -23,6 +23,11 @@ namespace Microsoft.BotBuilderSamples
 
             // Create the Bot Adapter with error handling enabled.
             services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
+            
+            // In-Memory storage for Voting.
+            var storage = new MemoryStorage();
+            var conversationState = new ConversationState(storage);
+            services.AddSingleton(conversationState);
 
             // Create the bot as a transient. In this case the ASP Controller is expecting an IBot.
             services.AddTransient<IBot, StoryPointPokerBot>();

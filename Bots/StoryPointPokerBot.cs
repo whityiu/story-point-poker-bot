@@ -2,10 +2,13 @@
 // Licensed under the MIT License.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Schema;
+
+using StoryPointPoker.State;
 
 namespace Microsoft.BotBuilderSamples
 {
@@ -14,8 +17,18 @@ namespace Microsoft.BotBuilderSamples
     // can tap to provide input. 
     public class StoryPointPokerBot : ActivityHandler
     {
+        private BotState conversationState;
         public const string WelcomeText = "Please vote when prompted.";
 
+        public StoryPointPokerBot(ConversationState conversationState) {
+            this.conversationState = conversationState;
+        }
+
+        public override async Task OnTurnAsync(ITurnContext turnContext, CancellationToken cancellationToken = default(CancellationToken)) {
+            await base.OnTurnAsync(turnContext, cancellationToken);
+
+            await this.conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
+        }
       
         protected override async Task OnMembersAddedAsync(IList<ChannelAccount> membersAdded, ITurnContext<IConversationUpdateActivity> turnContext, CancellationToken cancellationToken)
         {
@@ -24,15 +37,20 @@ namespace Microsoft.BotBuilderSamples
         }
         protected override async Task OnMessageActivityAsync(ITurnContext<IMessageActivity> turnContext, CancellationToken cancellationToken)
         {
+            var conversationStateAccessors = this.conversationState.CreateProperty<VotingRound>(nameof(VotingRound));
+            var conversationData = await conversationStateAccessors.GetAsync(turnContext, () => new VotingRound());
 
             // Extract the text from the message activity the user sent.
             var text = turnContext.Activity.Text.ToLowerInvariant();
 
             // Take the input from the user and create the appropriate response.
-            var responseText = ProcessSizeSelection(text);
+            var responseText = ProcessSizeSelection(conversationData, text);
 
             // Respond to the user.
             await turnContext.SendActivityAsync(responseText, cancellationToken: cancellationToken);
+
+            string voteSummary = "Vote summary: " + string.Join(",", conversationData.StoryPoints);
+            await turnContext.SendActivityAsync(voteSummary, cancellationToken: cancellationToken);
 
             await SendSuggestedActionsAsync(turnContext, cancellationToken);
         }
@@ -50,14 +68,43 @@ namespace Microsoft.BotBuilderSamples
             }
         }
 
-        private static string ProcessSizeSelection(string text)
+        private static async Task ProcessInput(ITurnContext turnContext) 
         {
-            const string colorText = "is the best color, I agree.";
-            
+            string command = String.Empty;
+            List<string> parameters = new List<string>();
+
+            string activityCommand = turnContext.Activity.Text.ToLowerInvariant().Trim();
+            if (!String.IsNullOrEmpty(activityCommand)) {
+                var commandParts = activityCommand.Split(' ');
+                command = commandParts[0];
+                parameters = commandParts.Skip(1).ToList();
+            }
+
+            switch (activityCommand) {
+                case "vote":
+                    HandleStartVote();
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        private void HandleStartVote() {
+
+        }
+
+        private string ProcessSizeSelection(VotingRound conversationData, string text)
+        {
             var selectedSize = -1;
             if (Int32.TryParse(text, out selectedSize)) {
                 // Record the vote.
-                return $"Vote recorded: {selectedSize}";
+                if (conversationData.StoryPoints == null) {
+                    conversationData.StoryPoints = new List<int>();
+                }
+                
+                conversationData.StoryPoints.Add(selectedSize);
+
+                return $"Vote recorded: {selectedSize}.";
             } else {
                 return "Please select a story size.";
             }
@@ -75,12 +122,12 @@ namespace Microsoft.BotBuilderSamples
             {
                 Actions = new List<CardAction>()
                 {
-                    new CardAction() { Title = "One", Type = ActionTypes.ImBack, Value = "1", Image = "https://via.placeholder.com/20/2A2A2A?text=1", ImageAltText = "R" },
-                    new CardAction() { Title = "Two", Type = ActionTypes.ImBack, Value = "2", Image = "https://via.placeholder.com/20/2A2A2A?text=2", ImageAltText = "Y" },
-                    new CardAction() { Title = "Three", Type = ActionTypes.ImBack, Value = "3", Image = "https://via.placeholder.com/20/2A2A2A?text=3", ImageAltText = "B"   },
-                    new CardAction() { Title = "Five", Type = ActionTypes.ImBack, Value = "5", Image = "https://via.placeholder.com/20/2A2A2A?text=5", ImageAltText = "B"   },
-                    new CardAction() { Title = "Eight", Type = ActionTypes.ImBack, Value = "8", Image = "https://via.placeholder.com/20/2A2A2A?text=8", ImageAltText = "B"   },
-                    new CardAction() { Title = "Thirteen", Type = ActionTypes.ImBack, Value = "13", Image = "https://via.placeholder.com/20/2A2A2A?text=13", ImageAltText = "B"   },
+                    new CardAction() { Type = ActionTypes.ImBack, Value = "1" },
+                    new CardAction() { Type = ActionTypes.ImBack, Value = "2" },
+                    new CardAction() { Type = ActionTypes.ImBack, Value = "3" },
+                    new CardAction() { Type = ActionTypes.ImBack, Value = "5" },
+                    new CardAction() { Type = ActionTypes.ImBack, Value = "8" },
+                    new CardAction() { Type = ActionTypes.ImBack, Value = "13" },
                 },
             };
             await turnContext.SendActivityAsync(reply, cancellationToken);
