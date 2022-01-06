@@ -5,6 +5,7 @@ namespace StoryPointPoker.State
     public class VotingRound
     {
         public string StoryId { get; set; }
-        public List<int> StoryPoints { get; set; }
+        public int VoterCount { get; set; }
+        public List<UserVote> StoryPoints { get; set; }
     }
 }
